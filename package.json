@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "lint": "node --check bin/smartcodex-classify.js && node --check src/*.js && node --check test/*.test.js"
+    "lint": "node --check bin/smartcodex-classify.js && node --check src/cli.js && node --check src/codex-runner.js && node --check src/ollama-runner.js && node --check src/profile.js && node --check src/schema.js && node --check test/cli.test.js && node --check test/codex-runner.test.js && node --check test/ollama-runner.test.js && node --check test/profile.test.js"
   },
   "engines": {
     "node": ">=20"

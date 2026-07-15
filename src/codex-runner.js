@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CLASSIFIER_SCHEMA, ROUTES, validateClassifierResult } from "./schema.js";
+import { CODEX_OUTPUT_SCHEMA, ROUTES, validateClassifierResult } from "./schema.js";
 
 const DEFAULT_TIMEOUT_MS = 120000;
 const DEFAULT_CLASSIFIER_MODEL = "gpt-5.4-mini";
@@ -17,39 +17,40 @@ export class CodexInvocationError extends Error {
   }
 }
 
-export function buildClassifierPayload({ prompt, repoProfile }) {
+export function buildClassifierPayload({ prompt, repoProfile, routeModels = {}, routeCandidates = null }) {
   const compactProfile = compactRepositoryProfile(repoProfile);
-  return [
-    "You are a cheap classifier for coding tasks.",
-    "Select the cheapest route that is likely to complete the user's request successfully.",
-    "Return only strict JSON that conforms to the provided output schema.",
-    "Do not execute the task. Do not inspect files. Do not ask follow-up questions.",
-    "",
-    "Exact user prompt:",
-    JSON.stringify(prompt),
-    "",
-    "Repository profile, produced locally without file contents. File manifest is path and byte size only:",
-    JSON.stringify(compactProfile),
-    "",
-    "Available routes:",
-    JSON.stringify(ROUTES)
-  ].join("\n");
+  return `Classify. Choose the option with lowest expected total token use that is still likely to finish correctly. Do not assume lower model+higher reasoning is cheaper than higher model+lower reasoning. Upgrade only for likely success. Do not execute or inspect files. Return only JSON. Keep strings terse, use at most 6 candidate files, and use labels such as "targeted" or "related_suite" where appropriate.\n${JSON.stringify({
+    prompt,
+    repo: compactProfile,
+    routes: routeRows(routeModels, routeCandidates)
+  })}`;
+}
+
+function routeRows(routeModels, routeCandidates) {
+  const candidateByRoute = new Map((routeCandidates || []).map((candidate) => [candidate.routeId, candidate]));
+  return ROUTES.map((route) => {
+    const candidate = candidateByRoute.get(route.routeId);
+    return [
+      route.routeId,
+      candidate?.model || routeModels[route.routeId] || "",
+      candidate?.reasoningLevels || [],
+      route.description
+    ];
+  });
 }
 
 export function compactRepositoryProfile(repoProfile) {
   return {
-    rootName: repoProfile.rootName,
-    totalFiles: repoProfile.totalFiles,
-    totalBytes: repoProfile.totalBytes,
-    fileCounts: repoProfile.fileCounts,
-    testsExist: repoProfile.testsExist,
-    ciExists: repoProfile.ciExists,
-    manifest: repoProfile.manifest,
-    promptMatchedFiles: repoProfile.promptMatchedFiles,
-    files: (repoProfile.files || []).map((file) => ({
-      path: file.path,
-      bytes: file.bytes
-    }))
+    n: repoProfile.rootName,
+    tf: repoProfile.totalFiles,
+    tb: repoProfile.totalBytes,
+    c: repoProfile.fileCounts,
+    test: repoProfile.testsExist,
+    ci: repoProfile.ciExists,
+    trunc: Boolean(repoProfile.manifest?.truncated),
+    omitted: repoProfile.manifest?.omittedFiles || 0,
+    match: repoProfile.promptMatchedFiles || [],
+    files: (repoProfile.files || []).map((file) => [file.path, file.bytes])
   };
 }
 
@@ -57,16 +58,18 @@ export async function runCodexClassifier({
   prompt,
   repoProfile,
   classifierModel = DEFAULT_CLASSIFIER_MODEL,
+  routeModels = {},
+  routeCandidates = null,
   codexBin = "codex",
   timeoutMs = DEFAULT_TIMEOUT_MS,
   env = process.env,
   spawnImpl = spawn
 }) {
-  const payload = buildClassifierPayload({ prompt, repoProfile });
+  const payload = buildClassifierPayload({ prompt, repoProfile, routeModels, routeCandidates });
   const payloadBytes = Buffer.byteLength(payload, "utf8");
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "smartcodex-classify-"));
   const schemaPath = path.join(tempDir, "classifier-output.schema.json");
-  await fs.writeFile(schemaPath, JSON.stringify(CLASSIFIER_SCHEMA), "utf8");
+  await fs.writeFile(schemaPath, JSON.stringify(CODEX_OUTPUT_SCHEMA), "utf8");
   const childEnv = sanitizeCodexEnv(env);
   const codexCommand = resolveCodexCommand(codexBin, childEnv);
   const args = [

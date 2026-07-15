@@ -1,6 +1,12 @@
 import fs from "node:fs";
 import { profileRepository as defaultProfileRepository } from "./profile.js";
 import { fixedClassifierModel, runCodexClassifier as defaultRunCodexClassifier } from "./codex-runner.js";
+import {
+  localClassifierModel,
+  localClassifierThinking,
+  pullOllamaModel as defaultPullOllamaModel,
+  runOllamaClassifier as defaultRunOllamaClassifier
+} from "./ollama-runner.js";
 
 const DEFAULT_ROUTE_MODELS = {
   economy: "gpt-5.4-mini",
@@ -8,9 +14,17 @@ const DEFAULT_ROUTE_MODELS = {
   advanced: "gpt-5.6-sol"
 };
 
+const DEFAULT_ROUTE_REASONING_LEVELS = {
+  economy: ["low"],
+  balanced: ["low", "medium"],
+  advanced: ["low", "medium", "high", "xhigh"]
+};
+
 export async function runCli(argv, io, deps = {}) {
   const profileRepository = deps.profileRepository || defaultProfileRepository;
   const runCodexClassifier = deps.runCodexClassifier || defaultRunCodexClassifier;
+  const runOllamaClassifier = deps.runOllamaClassifier || defaultRunOllamaClassifier;
+  const pullOllamaModel = deps.pullOllamaModel || defaultPullOllamaModel;
   let options;
   try {
     options = parseArgs(argv);
@@ -23,6 +37,28 @@ export async function runCli(argv, io, deps = {}) {
     return 0;
   }
 
+  const classifier = options.classifier || io.env.SMARTCODEX_CLASSIFIER || "codex";
+  if (!new Set(["codex", "ollama"]).has(classifier)) {
+    io.stderr.write('--classifier must be "codex" or "ollama"\n');
+    return 2;
+  }
+
+  if (options.setupOllama) {
+    try {
+      const classifierModel = localClassifierModel(io.env);
+      await pullOllamaModel({
+        model: classifierModel,
+        ollamaBin: io.env.SMARTCODEX_OLLAMA_BIN || "ollama",
+        env: io.env
+      });
+      io.stdout.write(`${JSON.stringify({ classifier: "ollama", classifierModel, ready: true }, null, 2)}\n`);
+      return 0;
+    } catch (error) {
+      io.stderr.write(`${JSON.stringify(errorReport(error), null, 2)}\n`);
+      return 1;
+    }
+  }
+
   const prompt = options.promptParts.length > 0
     ? options.promptParts.join(" ")
     : await readStdin(io.stdin);
@@ -32,8 +68,10 @@ export async function runCli(argv, io, deps = {}) {
     return 2;
   }
 
-  const classifierModel = fixedClassifierModel(io.env);
+  const classifierModel = classifier === "ollama" ? localClassifierModel(io.env) : fixedClassifierModel(io.env);
   const requestedModel = options.model;
+  const routeModels = routeModelsFromEnv(io.env);
+  const routeCandidates = routeCandidatesFromEnv(io.env);
   const codexBin = io.env.SMARTCODEX_CODEX_BIN || "codex";
   const timeoutMs = parsePositiveInteger(io.env.SMARTCODEX_TIMEOUT_MS, 120000);
   const maxManifestFiles = parsePositiveInteger(io.env.SMARTCODEX_MAX_MANIFEST_FILES, 2000);
@@ -42,20 +80,28 @@ export async function runCli(argv, io, deps = {}) {
   try {
     for (let index = 0; index < options.repeat; index += 1) {
       const repoProfile = profileRepository(io.cwd, prompt, { maxManifestFiles });
-      const run = await runCodexClassifier({
+      const runner = classifier === "ollama" ? runOllamaClassifier : runCodexClassifier;
+      const run = await runner({
         prompt,
         repoProfile,
         classifierModel,
+        routeModels,
+        routeCandidates,
         codexBin,
         timeoutMs,
+        think: localClassifierThinking(io.env),
+        ollamaUrl: io.env.SMARTCODEX_OLLAMA_URL,
         env: io.env
       });
 
       runs.push({
         index: index + 1,
+        classifier,
         classifierModel,
         requestedModel,
-        recommendedModel: recommendedModelForRoute(run.classification.routeId, io.env),
+        recommendedModel: recommendedModelForRoute(run.classification.routeId, routeModels),
+        recommendedReasoningLevel: run.classification.reasoningLevel,
+        ...(run.routingAssessment ? { routingAssessment: run.routingAssessment } : {}),
         classification: run.classification,
         metrics: run.metrics,
         validation: run.validation
@@ -89,15 +135,37 @@ export async function runCli(argv, io, deps = {}) {
   }
 }
 
-function recommendedModelForRoute(routeId, env = {}) {
-  const key = `SMARTCODEX_ROUTE_${routeId.toUpperCase()}_MODEL`;
-  return env[key] || DEFAULT_ROUTE_MODELS[routeId] || null;
+function routeModelsFromEnv(env = {}) {
+  return Object.fromEntries(Object.entries(DEFAULT_ROUTE_MODELS).map(([routeId, model]) => {
+    const key = `SMARTCODEX_ROUTE_${routeId.toUpperCase()}_MODEL`;
+    return [routeId, env[key] || model];
+  }));
+}
+
+function routeCandidatesFromEnv(env = {}) {
+  return Object.entries(routeModelsFromEnv(env)).map(([routeId, model]) => ({
+    routeId,
+    model,
+    reasoningLevels: reasoningLevelsForRoute(routeId, env)
+  }));
+}
+
+function reasoningLevelsForRoute(routeId, env = {}) {
+  const key = `SMARTCODEX_ROUTE_${routeId.toUpperCase()}_REASONING`;
+  const configured = env[key]?.split(",").map((value) => value.trim()).filter(Boolean);
+  return configured?.length ? configured : DEFAULT_ROUTE_REASONING_LEVELS[routeId];
+}
+
+function recommendedModelForRoute(routeId, routeModels = DEFAULT_ROUTE_MODELS) {
+  return routeModels[routeId] || null;
 }
 
 function parseArgs(argv) {
   const options = {
     help: false,
     model: null,
+    classifier: null,
+    setupOllama: false,
     repeat: 1,
     saveResults: null,
     promptParts: []
@@ -112,6 +180,15 @@ function parseArgs(argv) {
     if (arg === "--model") {
       options.model = requireValue(argv, index, "--model");
       index += 1;
+      continue;
+    }
+    if (arg === "--classifier") {
+      options.classifier = requireValue(argv, index, "--classifier");
+      index += 1;
+      continue;
+    }
+    if (arg === "--setup-ollama") {
+      options.setupOllama = true;
       continue;
     }
     if (arg === "--repeat") {
@@ -200,6 +277,9 @@ function errorReport(error) {
   if (error.stdout) {
     report.stdout = error.stdout.trim();
   }
+  if (error.responsePreview) {
+    report.responsePreview = error.responsePreview;
+  }
   return report;
 }
 
@@ -208,12 +288,18 @@ function helpText() {
     "Usage:",
     "  smartcodex-classify \"prompt\"",
     "  smartcodex-classify --model <model> \"prompt\"",
+    "  smartcodex-classify --classifier ollama \"prompt\"",
+    "  smartcodex-classify --setup-ollama",
     "  smartcodex-classify --repeat 5 \"prompt\"",
     "  smartcodex-classify --save-results results.jsonl \"prompt\"",
     "",
     "Reads a prompt from stdin when no prompt argument is provided.",
     "",
-    "The classifier always uses SMARTCODEX_CLASSIFIER_MODEL, or its built-in cheap default.",
+    "The default classifier is Codex. Use --classifier ollama for local classification with qwen3:4b-instruct.",
+    "--setup-ollama downloads the local model after Ollama is installed.",
+    "SMARTCODEX_CLASSIFIER=ollama makes local classification the default.",
+    "Local Ollama reasoning is on by default; set SMARTCODEX_OLLAMA_THINK=false to disable it.",
+    "The Codex classifier uses SMARTCODEX_CLASSIFIER_MODEL, or its built-in cheap default.",
     "--model is accepted as a downstream model preference and does not change the classifier model."
   ].join("\n") + "\n";
 }

@@ -17,6 +17,7 @@ import {
 
 const validClassification = {
   routeId: "balanced",
+  reasoningLevel: "medium",
   confidence: 0.86,
   taskType: "bug_fix",
   userIntent: "modify_and_test",
@@ -47,12 +48,20 @@ test("builds payload without file contents", () => {
 
   const payload = buildClassifierPayload({
     prompt: "Fix auth",
-    repoProfile: profile
+    repoProfile: profile,
+    routeCandidates: [
+      { routeId: "economy", model: "gpt-5.4-mini", reasoningLevels: ["low"] },
+      { routeId: "balanced", model: "gpt-5.4", reasoningLevels: ["low", "medium"] },
+      { routeId: "advanced", model: "gpt-5.6-sol", reasoningLevels: ["low", "medium", "high", "xhigh"] }
+    ]
   });
 
   assert.match(payload, /Fix auth/);
   assert.match(payload, /src\/auth\.ts/);
-  assert.match(payload, /"bytes":123/);
+  assert.match(payload, /reasoning/);
+  assert.match(payload, /gpt-5\.4-mini/);
+  assert.match(payload, /xhigh/);
+  assert.match(payload, /\["src\/auth\.ts",123\]/);
   assert.doesNotMatch(payload, /"lines":12/);
   assert.doesNotMatch(payload, /actual source code/);
 });
@@ -72,9 +81,11 @@ test("compacts repository profile to path and bytes manifest for the classifier"
     files: [{ path: "src/auth.ts", lines: 12, bytes: 123 }]
   });
 
-  assert.deepEqual(compact.files, [{ path: "src/auth.ts", bytes: 123 }]);
+  assert.deepEqual(compact.files, [["src/auth.ts", 123]]);
   assert.equal("totalLines" in compact, false);
   assert.equal("languageTotals" in compact, false);
+  assert.equal(compact.tf, 1);
+  assert.equal(compact.tb, 123);
 });
 
 test("parses turn.completed event and extracts token usage", () => {

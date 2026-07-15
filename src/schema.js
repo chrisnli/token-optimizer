@@ -4,11 +4,14 @@ export const ROUTES = [
   { routeId: "advanced", description: "Complex debugging, broad repo work, security, architecture, migrations, or concurrency" }
 ];
 
+export const REASONING_LEVELS = ["low", "medium", "high", "xhigh"];
+
 export const CLASSIFIER_SCHEMA = {
   type: "object",
   additionalProperties: false,
   required: [
     "routeId",
+    "reasoningLevel",
     "confidence",
     "taskType",
     "userIntent",
@@ -25,6 +28,7 @@ export const CLASSIFIER_SCHEMA = {
   ],
   properties: {
     routeId: { type: "string", enum: ROUTES.map((route) => route.routeId) },
+    reasoningLevel: { type: "string", enum: REASONING_LEVELS },
     confidence: { type: "number", minimum: 0, maximum: 1 },
     taskType: { type: "string", minLength: 1 },
     userIntent: { type: "string", minLength: 1 },
@@ -57,6 +61,48 @@ export const CLASSIFIER_SCHEMA = {
       }
     },
     reason: { type: "string", minLength: 1 }
+  }
+};
+
+export const CODEX_OUTPUT_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: CLASSIFIER_SCHEMA.required,
+  properties: {
+    routeId: { type: "string", enum: ROUTES.map((route) => route.routeId) },
+    reasoningLevel: { type: "string", enum: REASONING_LEVELS },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+    taskType: { type: "string" },
+    userIntent: { type: "string" },
+    likelyFilesTouched: { type: "integer" },
+    candidateFiles: { type: "array", items: { type: "string" } },
+    ambiguity: { type: "integer", minimum: 0, maximum: 5 },
+    repoInspection: { type: "string" },
+    testing: { type: "string" },
+    risk: { type: "string", enum: ["low", "medium", "high"] },
+    effort: { type: "string", enum: ["low", "medium", "high"] },
+    estimatedMinutes: {
+      type: "object",
+      additionalProperties: false,
+      required: ["minimum", "maximum"],
+      properties: {
+        minimum: { type: "integer" },
+        maximum: { type: "integer" }
+      }
+    },
+    complexity: {
+      type: "object",
+      additionalProperties: false,
+      required: ["reasoning", "repositoryContext", "implementation", "verification", "scope"],
+      properties: {
+        reasoning: { type: "integer", minimum: 1, maximum: 5 },
+        repositoryContext: { type: "integer", minimum: 1, maximum: 5 },
+        implementation: { type: "integer", minimum: 1, maximum: 5 },
+        verification: { type: "integer", minimum: 1, maximum: 5 },
+        scope: { type: "integer", minimum: 1, maximum: 5 }
+      }
+    },
+    reason: { type: "string" }
   }
 };
 

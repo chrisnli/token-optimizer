@@ -59,6 +59,16 @@ test("CLI repeat mode records one Codex request per run, saves results, and leav
   assert.equal(exitCode, 0, stderr.text);
   assert.equal(calls.length, 2);
   assert.equal(calls[0].classifierModel, "cheap-fixed-classifier");
+  assert.deepEqual(calls[0].routeModels, {
+    economy: "gpt-5.4-mini",
+    balanced: "gpt-5.4",
+    advanced: "gpt-5.6-sol"
+  });
+  assert.deepEqual(calls[0].routeCandidates, [
+    { routeId: "economy", model: "gpt-5.4-mini", reasoningLevels: ["low"] },
+    { routeId: "balanced", model: "gpt-5.4", reasoningLevels: ["low", "medium"] },
+    { routeId: "advanced", model: "gpt-5.6-sol", reasoningLevels: ["low", "medium", "high", "xhigh"] }
+  ]);
   assert.equal(fs.readFileSync(sourcePath, "utf8"), before);
 
   const report = JSON.parse(stdout.text);
@@ -66,6 +76,7 @@ test("CLI repeat mode records one Codex request per run, saves results, and leav
   assert.equal(report.runs[0].classifierModel, "cheap-fixed-classifier");
   assert.equal(report.runs[0].requestedModel, "mock-model");
   assert.equal(report.runs[0].recommendedModel, "gpt-5.4");
+  assert.equal(report.runs[0].recommendedReasoningLevel, "medium");
   assert.equal(report.summary.repeat, 2);
   assert.equal(report.summary.averageTokens.totalTokens, 15);
   assert.equal(report.summary.routeAgreement.routeId, "balanced");
@@ -75,9 +86,49 @@ test("CLI repeat mode records one Codex request per run, saves results, and leav
   assert.equal(saved.length, 2);
 });
 
+test("CLI selects the local Ollama classifier without invoking Codex", async () => {
+  const stdout = makeWritableCapture();
+  const stderr = makeWritableCapture();
+  const stdin = new PassThrough();
+  stdin.end();
+  let codexCalls = 0;
+  let ollamaCalls = 0;
+
+  const exitCode = await runCli(["--classifier", "ollama", "Fix auth"], {
+    cwd: process.cwd(),
+    env: {},
+    stdin,
+    stdout,
+    stderr
+  }, {
+    runCodexClassifier: async () => {
+      codexCalls += 1;
+      throw new Error("Codex must not run");
+    },
+    runOllamaClassifier: async (request) => {
+      ollamaCalls += 1;
+      assert.equal(request.classifierModel, "qwen3:4b-instruct");
+      assert.equal(request.think, true);
+      return {
+        classification: validClassification(),
+        metrics: { inputTokens: 10, cachedTokens: 0, outputTokens: 5, reasoningTokens: 0, totalTokens: 15, latencyMs: 5, payloadBytes: 100, schemaValid: true },
+        validation: { valid: true, errors: [] }
+      };
+    }
+  });
+
+  assert.equal(exitCode, 0, stderr.text);
+  assert.equal(codexCalls, 0);
+  assert.equal(ollamaCalls, 1);
+  const report = JSON.parse(stdout.text);
+  assert.equal(report.classifier, "ollama");
+  assert.equal(report.classifierModel, "qwen3:4b-instruct");
+});
+
 function validClassification() {
   return {
     routeId: "balanced",
+    reasoningLevel: "medium",
     confidence: 0.86,
     taskType: "bug_fix",
     userIntent: "modify_and_test",
