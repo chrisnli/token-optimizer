@@ -12,6 +12,11 @@ test("later turns resume the last session", () => {
   assert.deepEqual(args, ["exec", "resume", "--last", "--model", "gpt-5.4-mini", "continue"]);
 });
 
+test("a known thread id is resumed explicitly instead of --last", () => {
+  const args = buildTurnArgs({ prompt: "continue", model: "m", fresh: false, threadId: "t-abc" });
+  assert.deepEqual(args, ["exec", "resume", "t-abc", "--model", "m", "continue"]);
+});
+
 test("model flag omitted when no model chosen", () => {
   const args = buildTurnArgs({ prompt: "hello", model: null, fresh: true });
   assert.deepEqual(args, ["exec", "hello"]);

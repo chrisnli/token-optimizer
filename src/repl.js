@@ -1,4 +1,5 @@
 import readline from "node:readline";
+import { createStyler } from "./render.js";
 import { FALLBACK_ROUTE, modelForRoute } from "./router.js";
 
 const CLOSED = Symbol("closed");
@@ -16,6 +17,7 @@ export function createSessionState(options = {}) {
     sandbox: options.sandbox || null,
     fullAuto: Boolean(options.fullAuto),
     fresh: true,
+    threadId: null,
     dryRun: Boolean(options.dryRun),
     codexBin: options.codexBin || "codex",
     lastClassification: null
@@ -85,6 +87,7 @@ export async function handleCommand(line, state, io, deps) {
 
     case "/new":
       state.fresh = true;
+      state.threadId = null;
       io.stdout.write("next prompt starts a fresh codex session\n");
       return { action: "none" };
 
@@ -135,6 +138,7 @@ export async function handleCommand(line, state, io, deps) {
 }
 
 export async function executeTurn(prompt, state, io, deps) {
+  const style = createStyler(io, io.env);
   let model = state.model;
   let reasoningEffort = null;
 
@@ -144,7 +148,7 @@ export async function executeTurn(prompt, state, io, deps) {
       model = result.model;
       reasoningEffort = result.reasoningLevel || null;
       state.lastClassification = result;
-      io.stdout.write(formatAutoLine(result));
+      io.stdout.write(`${style.dim(formatAutoLine(result))}\n`);
     } else {
       model = state.model || modelForRoute(FALLBACK_ROUTE, io.env);
       io.stderr.write(`[auto] warning: ${result.warning}; falling back to ${model}\n`);
@@ -157,7 +161,8 @@ export async function executeTurn(prompt, state, io, deps) {
     reasoningEffort,
     sandbox: state.sandbox,
     fullAuto: state.fullAuto,
-    fresh: state.fresh
+    fresh: state.fresh,
+    threadId: state.threadId
   };
 
   const result = await deps.runTurn(spec, {
@@ -169,6 +174,9 @@ export async function executeTurn(prompt, state, io, deps) {
 
   if (result.exitCode === 0) {
     state.fresh = false;
+    if (result.threadId) {
+      state.threadId = result.threadId;
+    }
   } else if (!result.startError) {
     io.stderr.write(`codex exited with status ${result.exitCode}\n`);
   }
@@ -176,19 +184,12 @@ export async function executeTurn(prompt, state, io, deps) {
 }
 
 export function formatAutoLine(result) {
-  const details = [];
-  if (result.reasoningLevel) {
-    details.push(`reasoning ${result.reasoningLevel}`);
-  }
-  if (result.confidence != null) {
-    details.push(`confidence ${result.confidence}`);
-  }
-  const detailText = details.length > 0 ? ` (${details.join(", ")})` : "";
-  const reason = result.reason ? ` — "${result.reason}"` : "";
-  return `[auto] route=${result.routeId} → ${result.model}${detailText}${reason}\n`;
+  const reasoning = result.reasoningLevel ? ` · reasoning ${result.reasoningLevel}` : "";
+  return `[auto] ${result.model}${reasoning}`;
 }
 
 export async function runRepl(state, io, deps) {
+  const style = createStyler(io, io.env);
   const isTerminal = Boolean(io.stdin.isTTY);
   const rl = readline.createInterface({
     input: io.stdin,
@@ -231,7 +232,7 @@ export async function runRepl(state, io, deps) {
       return Promise.resolve(CLOSED);
     }
     if (isTerminal) {
-      rl.setPrompt("> ");
+      rl.setPrompt(`\n${style.cyan(style.bold("› "))}`);
       rl.prompt();
     }
     return new Promise((resolve) => {
@@ -239,7 +240,7 @@ export async function runRepl(state, io, deps) {
     });
   }
 
-  io.stdout.write(`smartcodex (auto: ${state.auto ? "on" : "off"}, model: ${state.model || "codex default"}) — /help for commands\n`);
+  io.stdout.write(`${style.bold("smartcodex")} ${style.dim(`(auto: ${state.auto ? "on" : "off"}, model: ${state.model || "codex default"}) — /help for commands`)}\n`);
 
   while (true) {
     const line = await nextLine();
@@ -285,8 +286,15 @@ function statusText(state) {
     `auto mode: ${state.auto ? "on" : "off"}`,
     `model: ${state.model || "codex default"}`,
     `approvals: ${approvalsDisplay(state)}`,
-    `session: ${state.fresh ? "fresh (next prompt starts a new codex session)" : "continuing last codex session"}`,
-    `last classification: ${classification ? `route=${classification.routeId} model=${classification.model}` : "none"}`,
+    `session: ${state.fresh
+      ? "fresh (next prompt starts a new codex session)"
+      : `continuing codex session${state.threadId ? ` ${state.threadId}` : ""}`}`,
+    `last classification: ${classification
+      ? `route=${classification.routeId} model=${classification.model}`
+        + `${classification.reasoningLevel ? ` reasoning=${classification.reasoningLevel}` : ""}`
+        + `${classification.confidence != null ? ` confidence=${classification.confidence}` : ""}`
+        + `${classification.reason ? ` — "${classification.reason}"` : ""}`
+      : "none"}`,
     `codex bin: ${state.codexBin}`
   ].join("\n") + "\n";
 }

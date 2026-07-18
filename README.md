@@ -11,10 +11,15 @@ level, forwarded to codex as `model_reasoning_effort`. The chosen model, route,
 reasoning level, confidence, and reason are printed before each turn:
 
 ```
-[auto] route=economy → gpt-5.4-mini (reasoning low, confidence 0.9) — "single-file fix"
+[auto] gpt-5.4-mini · reasoning low
 ```
 
-Regular messages pass through to codex verbatim.
+(`/status` shows the full detail: route, confidence, and the classifier's reason.)
+
+Regular messages pass through to codex verbatim. Turn output is rendered from codex's
+JSON event stream in a codex-TUI-like style: your input sits on the `› ` prompt line,
+agent replies are plain text, and commands / file changes / token counts appear dimmed —
+no `user`/`codex` labels or session headers.
 
 ### Requirements
 

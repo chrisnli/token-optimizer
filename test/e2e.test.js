@@ -75,7 +75,9 @@ test("scripted session: manual model, resume, /new, /auto, /quit", async () => {
     assert.ok(result.stdout.includes('[dry-run] codex exec --model my-model "hello world"'));
     assert.ok(result.stdout.includes("[dry-run] codex exec resume --last --model my-model again"));
     assert.ok(result.stdout.includes('[dry-run] codex exec --model my-model "third one"'));
-    assert.ok(result.stdout.includes("[auto] route=economy → stub-model (reasoning low, confidence 0.9)"));
+    assert.ok(result.stdout.includes("[auto] stub-model · reasoning low"));
+    assert.ok(!result.stdout.includes("route="));
+    assert.ok(!result.stdout.includes("confidence"));
     assert.ok(result.stdout.includes("model_reasoning_effort"));
     assert.ok(result.stdout.includes('"auto please"'));
     assert.ok(result.stdout.includes("codex exec resume --last --model stub-model"));

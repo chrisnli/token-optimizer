@@ -78,12 +78,14 @@ test("/approvals maps to sandbox and full-auto", async () => {
   assert.ok(io.out().includes("usage: /approvals"));
 });
 
-test("/new marks the session fresh", async () => {
+test("/new marks the session fresh and forgets the thread id", async () => {
   const state = createSessionState();
   state.fresh = false;
+  state.threadId = "t-old";
   const io = fakeIo();
   await handleCommand("/new", state, io, fakeDeps());
   assert.equal(state.fresh, true);
+  assert.equal(state.threadId, null);
 });
 
 test("/init returns a turn with the AGENTS.md instruction", async () => {
@@ -159,8 +161,24 @@ test("executeTurn with auto uses the classifier model and prints the auto line",
   await executeTurn("classify me", state, io, deps);
   assert.deepEqual(deps.calls.classify, ["classify me"]);
   assert.equal(deps.calls.runTurn[0].model, "auto-model");
-  assert.ok(io.out().includes("[auto] route=economy"));
+  assert.ok(io.out().includes("[auto] auto-model"));
+  assert.ok(!io.out().includes("route="));
+  assert.ok(!io.out().includes("confidence"));
   assert.equal(state.lastClassification.model, "auto-model");
+});
+
+test("executeTurn remembers the codex thread id and resumes it", async () => {
+  const state = createSessionState();
+  const deps = fakeDeps();
+  deps.runTurn = async (spec) => {
+    deps.calls.runTurn.push(spec);
+    return { exitCode: 0, threadId: "t-123" };
+  };
+  await executeTurn("first", state, fakeIo(), deps);
+  assert.equal(state.threadId, "t-123");
+  await executeTurn("second", state, fakeIo(), deps);
+  assert.equal(deps.calls.runTurn[1].threadId, "t-123");
+  assert.equal(deps.calls.runTurn[1].fresh, false);
 });
 
 test("executeTurn forwards the classifier's reasoning level", async () => {
@@ -172,7 +190,7 @@ test("executeTurn forwards the classifier's reasoning level", async () => {
   const io = fakeIo();
   await executeTurn("x", state, io, deps);
   assert.equal(deps.calls.runTurn[0].reasoningEffort, "high");
-  assert.ok(io.out().includes("(reasoning high, confidence 0.8)"));
+  assert.ok(io.out().includes("[auto] big · reasoning high"));
 });
 
 test("executeTurn falls back to balanced model when the classifier fails", async () => {
@@ -203,7 +221,7 @@ test("executeTurn reports nonzero codex exit and keeps fresh state", async () =>
   assert.equal(state.fresh, true);
 });
 
-test("formatAutoLine handles missing confidence and reason", () => {
-  const line = formatAutoLine({ routeId: "balanced", model: "m", confidence: null, reason: "" });
-  assert.equal(line, "[auto] route=balanced → m\n");
+test("formatAutoLine shows only model and reasoning level", () => {
+  assert.equal(formatAutoLine({ routeId: "balanced", model: "m", confidence: 0.9, reason: "why" }), "[auto] m");
+  assert.equal(formatAutoLine({ model: "m", reasoningLevel: "low" }), "[auto] m · reasoning low");
 });

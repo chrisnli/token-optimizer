@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import { codexStartMessage, resolveCodexCommand } from "./codex-command.js";
+import { createLineSplitter, createStyler, createTurnRenderer } from "./render.js";
 
 export function buildTurnArgs(spec) {
   const args = ["exec"];
   if (!spec.fresh) {
-    args.push("resume", "--last");
+    args.push("resume", spec.threadId || "--last");
   }
   if (spec.model) {
     args.push("--model", spec.model);
@@ -47,14 +48,26 @@ export async function runTurn(spec, { codexBin = "codex", env = process.env, dry
   }
 
   const codexCommand = resolveCodexCommand(codexBin, env);
+  const style = createStyler(io, env);
+  const renderer = createTurnRenderer(io, style);
+  // --json goes after `exec`/`exec resume` but is rendering plumbing, not part of the
+  // logical command, so dry-run output stays free of it.
+  const fullArgs = [...codexCommand.argsPrefix, ...args.slice(0, -1), "--json", args[args.length - 1]];
+
   return new Promise((resolve) => {
-    const child = spawnImpl(codexCommand.command, [...codexCommand.argsPrefix, ...args], {
+    const child = spawnImpl(codexCommand.command, fullArgs, {
       env,
       shell: false,
       windowsHide: true,
-      // codex gets the terminal for output; stdin stays ours so the REPL keeps the line.
-      stdio: ["ignore", "inherit", "inherit"]
+      stdio: ["ignore", "pipe", "pipe"]
     });
+
+    const stdoutLines = createLineSplitter((line) => renderer.handleLine(line));
+    const stderrLines = createLineSplitter((line) => renderer.handleStderrLine(line));
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => stdoutLines.push(chunk));
+    child.stderr?.on("data", (chunk) => stderrLines.push(chunk));
 
     const onSigint = () => {
       child.kill("SIGTERM");
@@ -69,12 +82,20 @@ export async function runTurn(spec, { codexBin = "codex", env = process.env, dry
 
     child.on("close", (exitCode, signal) => {
       process.removeListener("SIGINT", onSigint);
+      stdoutLines.flush();
+      stderrLines.flush();
+      const rendered = renderer.result();
       if (signal) {
         io.stderr.write(`codex turn interrupted (${signal})\n`);
-        resolve({ exitCode: 130, interrupted: true });
+        resolve({ exitCode: 130, interrupted: true, threadId: rendered.threadId });
         return;
       }
-      resolve({ exitCode: exitCode ?? 1 });
+      resolve({
+        exitCode: exitCode ?? 1,
+        threadId: rendered.threadId,
+        usage: rendered.usage,
+        failed: rendered.failed
+      });
     });
   });
 }
