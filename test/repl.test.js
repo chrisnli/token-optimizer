@@ -1,6 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { INIT_PROMPT, createSessionState, executeTurn, formatAutoLine, handleCommand, resolveSelection } from "../src/repl.js";
+
+function withCodexCache(slugs, run) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "smartcodex-repl-"));
+  const models = slugs.map((slug) => ({
+    slug, display_name: slug, visibility: "list", supported_in_api: true,
+    default_reasoning_level: "medium", supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }]
+  }));
+  fs.writeFileSync(path.join(dir, "models_cache.json"), JSON.stringify({ models }), "utf8");
+  try {
+    return run({ CODEX_HOME: dir });
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 function fakeIo(env = {}) {
   const out = [];
@@ -79,12 +96,14 @@ test("/approvals with a direct arg maps to sandbox and full-auto", async () => {
 });
 
 test("bare /model opens a picker listing codex models", async () => {
-  const state = createSessionState();
-  const io = fakeIo();
-  await handleCommand("/model", state, io, fakeDeps());
-  assert.equal(state.pending.kind, "model");
-  assert.ok(io.out().includes("Select a model"));
-  assert.ok(io.out().includes("gpt-5.4"));
+  await withCodexCache(["gpt-5.5", "gpt-5.4"], async (env) => {
+    const state = createSessionState();
+    const io = fakeIo(env);
+    await handleCommand("/model", state, io, fakeDeps());
+    assert.equal(state.pending.kind, "model");
+    assert.ok(io.out().includes("Select a model"));
+    assert.ok(io.out().includes("gpt-5.4"));
+  });
 });
 
 test("picking a model by number sets it, turns auto off, then asks reasoning", () => {
@@ -252,6 +271,47 @@ test("executeTurn with auto uses the classifier model and prints the auto line",
   assert.ok(!io.out().includes("route="));
   assert.ok(!io.out().includes("confidence"));
   assert.equal(state.lastClassification.model, "auto-model");
+});
+
+test("token line shows per-message cost and running session total", async () => {
+  const state = createSessionState({ model: "m" });
+  const deps = fakeDeps();
+  const io = fakeIo();
+  deps.runTurn = async () => ({ exitCode: 0, cumulativeTokens: 15336 });
+  await executeTurn("one", state, io, deps);
+  assert.ok(io.out().includes("· 15,336 tokens · 15,336 session"));
+  assert.equal(state.sessionTokens, 15336);
+
+  const io2 = fakeIo();
+  deps.runTurn = async () => ({ exitCode: 0, cumulativeTokens: 33730 });
+  await executeTurn("two", state, io2, deps);
+  // second message cost = 33,730 - 15,336 = 18,394
+  assert.ok(io2.out().includes("· 18,394 tokens · 33,730 session"));
+  assert.equal(state.sessionTokens, 33730);
+});
+
+test("/new resets the session token counter", async () => {
+  const state = createSessionState({ model: "m" });
+  state.sessionTokens = 33730;
+  const io = fakeIo();
+  await handleCommand("/new", state, io, fakeDeps());
+  assert.equal(state.sessionTokens, 0);
+
+  const deps = fakeDeps();
+  deps.runTurn = async () => ({ exitCode: 0, cumulativeTokens: 12000 });
+  const io2 = fakeIo();
+  await executeTurn("fresh start", state, io2, deps);
+  assert.ok(io2.out().includes("· 12,000 tokens · 12,000 session"));
+});
+
+test("token line is skipped when codex reports no usage (e.g. dry-run)", async () => {
+  const state = createSessionState({ model: "m" });
+  const deps = fakeDeps();
+  deps.runTurn = async () => ({ exitCode: 0 });
+  const io = fakeIo();
+  await executeTurn("x", state, io, deps);
+  assert.ok(!io.out().includes("tokens"));
+  assert.equal(state.sessionTokens, 0);
 });
 
 test("executeTurn remembers the codex thread id and resumes it", async () => {

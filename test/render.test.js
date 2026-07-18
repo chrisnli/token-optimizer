@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createLineSplitter, createStyler, createTurnRenderer } from "../src/render.js";
+import { createLineSplitter, createStyler, createTurnRenderer, usageTotalTokens } from "../src/render.js";
 
 function fakeIo() {
   const out = [];
@@ -40,14 +40,22 @@ test("renders a real event stream without user/codex labels", () => {
     "  $ git log --oneline -1",
     "",
     "OK",
-    "  · 30,887 tokens",
     ""
   ].join("\n"));
   assert.ok(!io.out().includes("user"));
+  // The renderer no longer prints the token line itself — the session layer does.
+  assert.ok(!io.out().includes("tokens"));
   const result = renderer.result();
   assert.equal(result.threadId, "019f733c-4b72-7c32-8ac7-8af5a2b05b51");
   assert.equal(result.failed, false);
   assert.equal(result.usage.output_tokens, 99);
+  assert.equal(usageTotalTokens(result.usage), 30788 + 99);
+});
+
+test("usageTotalTokens sums input and output, handling null", () => {
+  assert.equal(usageTotalTokens(null), null);
+  assert.equal(usageTotalTokens({ input_tokens: 100, output_tokens: 5 }), 105);
+  assert.equal(usageTotalTokens({ input_tokens: 100 }), 100);
 });
 
 test("a command completing without a started event is still shown once", () => {

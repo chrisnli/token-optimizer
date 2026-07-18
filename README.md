@@ -18,8 +18,10 @@ level are printed before each turn:
 
 Regular messages pass through to codex verbatim. Turn output is rendered from codex's
 JSON event stream in a codex-TUI-like style: your input sits on the `› ` prompt line,
-agent replies are plain text, and commands / file changes / token counts appear dimmed —
-no `user`/`codex` labels or session headers.
+agent replies are plain text, and commands / file changes appear dimmed — no
+`user`/`codex` labels or session headers. Each turn ends with a dimmed token line
+showing the cost of that message and the running session total, e.g.
+`· 17,071 tokens · 34,126 session`.
 
 ### Requirements
 

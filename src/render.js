@@ -92,14 +92,11 @@ export function createTurnRenderer(io, style) {
         return;
       }
 
-      case "turn.completed": {
+      case "turn.completed":
+        // codex reports usage cumulatively across the (possibly resumed) session; the
+        // session layer turns it into a per-message + session-total line.
         usage = event.usage || null;
-        if (usage) {
-          const total = (usage.input_tokens || 0) + (usage.output_tokens || 0);
-          print(`${style.dim(`  · ${total.toLocaleString("en-US")} tokens`)}\n`);
-        }
         return;
-      }
 
       case "turn.failed":
         failed = true;
@@ -149,6 +146,15 @@ export function createTurnRenderer(io, style) {
 // per-turn model switch is intended behavior — show it quietly.
 function isModelSwitchNotice(message) {
   return message.includes("was recorded with model") && message.includes("resuming with");
+}
+
+// codex's usage has no explicit total; total = input + output (cached is a subset of
+// input, reasoning a subset of output). Matches codex's own total_tokens.
+export function usageTotalTokens(usage) {
+  if (!usage) {
+    return null;
+  }
+  return (usage.input_tokens || 0) + (usage.output_tokens || 0);
 }
 
 export function createLineSplitter(onLine) {

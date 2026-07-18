@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { codexStartMessage, resolveCodexCommand } from "./codex-command.js";
-import { createLineSplitter, createStyler, createTurnRenderer } from "./render.js";
+import { createLineSplitter, createStyler, createTurnRenderer, usageTotalTokens } from "./render.js";
 
 export function buildTurnArgs(spec) {
   const args = ["exec"];
@@ -94,6 +94,7 @@ export async function runTurn(spec, { codexBin = "codex", env = process.env, dry
         exitCode: exitCode ?? 1,
         threadId: rendered.threadId,
         usage: rendered.usage,
+        cumulativeTokens: usageTotalTokens(rendered.usage),
         failed: rendered.failed
       });
     });

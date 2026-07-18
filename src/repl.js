@@ -23,6 +23,8 @@ export function createSessionState(options = {}) {
     dryRun: Boolean(options.dryRun),
     codexBin: options.codexBin || "codex",
     lastClassification: null,
+    // codex reports token usage cumulatively; we subtract this to get per-message cost.
+    sessionTokens: 0,
     // When set, the next input line is a picker selection, not a prompt/command.
     pending: null
   };
@@ -79,6 +81,8 @@ export async function handleCommand(line, state, io, deps) {
     case "/new":
       state.fresh = true;
       state.threadId = null;
+      // A fresh codex session restarts codex's cumulative token counter.
+      state.sessionTokens = 0;
       io.stdout.write("next prompt starts a fresh codex session\n");
       return { action: "none" };
 
@@ -320,10 +324,23 @@ export async function executeTurn(prompt, state, io, deps) {
     if (result.threadId) {
       state.threadId = result.threadId;
     }
+    reportTokens(result.cumulativeTokens, state, io, style);
   } else if (!result.startError) {
     io.stderr.write(`codex exited with status ${result.exitCode}\n`);
   }
   return result;
+}
+
+function reportTokens(cumulative, state, io, style) {
+  if (cumulative == null) {
+    return;
+  }
+  // Guard against codex resetting its counter mid-session (e.g. compaction): never
+  // show a negative per-message figure.
+  const message = cumulative >= state.sessionTokens ? cumulative - state.sessionTokens : cumulative;
+  state.sessionTokens = cumulative;
+  const fmt = (n) => n.toLocaleString("en-US");
+  io.stdout.write(`${style.dim(`  · ${fmt(message)} tokens · ${fmt(cumulative)} session`)}\n`);
 }
 
 export function formatAutoLine(result) {
