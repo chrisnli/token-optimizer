@@ -130,6 +130,36 @@ test("--model pins a model and does not auto-classify", async () => {
   assert.ok(result.stdout.includes('[dry-run] codex exec --model gpt-5.4 "whats 1+1"'));
 });
 
+test("model picker lists codex's cached models and applies the pick", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "smartcodex-home-"));
+  const cache = {
+    models: [
+      { slug: "gpt-5.5", display_name: "GPT-5.5", visibility: "list", supported_in_api: true,
+        default_reasoning_level: "medium", supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }] },
+      { slug: "gpt-5.4-mini", display_name: "GPT-5.4 mini", visibility: "list", supported_in_api: true,
+        default_reasoning_level: "medium", supported_reasoning_levels: [{ effort: "low" }] }
+    ]
+  };
+  await fs.writeFile(path.join(home, "models_cache.json"), JSON.stringify(cache), "utf8");
+  try {
+    const result = await runHarnessProcess(["--dry-run"], "/model\n1\nhigh\nhello\n/quit\n", { CODEX_HOME: home });
+    assert.equal(result.exitCode, 0, `stderr: ${result.stderr}`);
+    assert.ok(result.stdout.includes("1. gpt-5.5"));
+    assert.ok(result.stdout.includes("2. gpt-5.4-mini"));
+    assert.ok(result.stdout.includes("reasoning level set to high"));
+    assert.ok(result.stdout.includes('[dry-run] codex exec --model gpt-5.5 -c "model_reasoning_effort=\\"high\\"" hello'));
+  } finally {
+    await fs.rm(home, { recursive: true, force: true });
+  }
+});
+
+test("/permissions picker applies an approval preset", async () => {
+  const result = await runHarnessProcess(["--dry-run", "--manual"], "/permissions\n1\nhello\n/quit\n");
+  assert.equal(result.exitCode, 0, `stderr: ${result.stderr}`);
+  assert.ok(result.stdout.includes("1. Read Only"));
+  assert.ok(result.stdout.includes("[dry-run] codex exec --sandbox read-only hello"));
+});
+
 test("--help prints usage without starting a session", async () => {
   const result = await runHarnessProcess(["--help"], "");
   assert.equal(result.exitCode, 0);

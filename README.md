@@ -48,14 +48,18 @@ Inside the session:
 | Command | Effect |
 |---|---|
 | `/auto [on\|off]` | toggle classifier-driven model selection |
-| `/model [name]` | show or set the model manually (setting turns auto off) |
-| `/approvals <mode>` | `read-only` \| `workspace-write` \| `danger-full-access` \| `full-auto` |
+| `/model [name]` | bare: pick from codex's own model list (then a reasoning level); or name one directly. Turns auto off. |
+| `/approvals [mode]` | bare: pick an approval/sandbox mode from a menu; or name one directly. Alias: `/permissions`. |
 | `/new` | next prompt starts a fresh codex session |
 | `/init` | ask codex to generate AGENTS.md |
 | `/diff` | show the working-tree diff |
 | `/status` | mode, model, approvals, session state, last classification |
 | `/mcp`, `/login`, `/logout` | forwarded to the codex CLI |
 | `/quit`, `/exit` | leave |
+
+The `/model` and `/approvals` pickers show the same options codex would. The model list
+is read from codex's own cache (`~/.codex/models_cache.json`), so it always matches what
+your codex/account actually supports; if that cache is missing, a built-in list is used.
 
 `--dry-run` prints the exact `codex` command per turn instead of running it.
 

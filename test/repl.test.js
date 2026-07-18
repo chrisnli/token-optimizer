@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { INIT_PROMPT, createSessionState, executeTurn, formatAutoLine, handleCommand } from "../src/repl.js";
+import { INIT_PROMPT, createSessionState, executeTurn, formatAutoLine, handleCommand, resolveSelection } from "../src/repl.js";
 
 function fakeIo(env = {}) {
   const out = [];
@@ -49,11 +49,11 @@ test("/auto toggles and accepts on/off", async () => {
   assert.ok(io.out().includes("usage: /auto"));
 });
 
-test("/model shows current model when bare", async () => {
+test("bare /model opens the picker rather than just printing state", async () => {
   const state = createSessionState();
   const io = fakeIo();
   await handleCommand("/model", state, io, fakeDeps());
-  assert.ok(io.out().includes("codex default"));
+  assert.equal(state.pending.kind, "model");
 });
 
 test("/model <name> sets the model and turns auto off", async () => {
@@ -65,7 +65,7 @@ test("/model <name> sets the model and turns auto off", async () => {
   assert.ok(io.out().includes("auto mode turned OFF"));
 });
 
-test("/approvals maps to sandbox and full-auto", async () => {
+test("/approvals with a direct arg maps to sandbox and full-auto", async () => {
   const state = createSessionState();
   const io = fakeIo();
   await handleCommand("/approvals read-only", state, io, fakeDeps());
@@ -76,6 +76,86 @@ test("/approvals maps to sandbox and full-auto", async () => {
   assert.equal(state.sandbox, null);
   await handleCommand("/approvals nonsense", state, io, fakeDeps());
   assert.ok(io.out().includes("usage: /approvals"));
+});
+
+test("bare /model opens a picker listing codex models", async () => {
+  const state = createSessionState();
+  const io = fakeIo();
+  await handleCommand("/model", state, io, fakeDeps());
+  assert.equal(state.pending.kind, "model");
+  assert.ok(io.out().includes("Select a model"));
+  assert.ok(io.out().includes("gpt-5.4"));
+});
+
+test("picking a model by number sets it, turns auto off, then asks reasoning", () => {
+  const state = createSessionState({ auto: true });
+  const io = fakeIo();
+  state.pending = {
+    kind: "model",
+    models: [
+      { slug: "gpt-5.5", reasoningLevels: ["low", "high"], defaultReasoning: "medium" },
+      { slug: "gpt-5.4", reasoningLevels: ["low", "high"], defaultReasoning: "medium" }
+    ]
+  };
+  resolveSelection("2", state, io);
+  assert.equal(state.model, "gpt-5.4");
+  assert.equal(state.auto, false);
+  assert.equal(state.pending.kind, "reasoning");
+
+  resolveSelection("high", state, io);
+  assert.equal(state.reasoningEffort, "high");
+  assert.equal(state.pending, null);
+});
+
+test("blank selection cancels the model picker", () => {
+  const state = createSessionState({ model: "keep-me" });
+  const io = fakeIo();
+  state.pending = { kind: "model", models: [{ slug: "gpt-5.4", reasoningLevels: [] }] };
+  resolveSelection("", state, io);
+  assert.equal(state.model, "keep-me");
+  assert.equal(state.pending, null);
+  assert.ok(io.out().includes("unchanged"));
+});
+
+test("a typed unknown model name is accepted as-is with no reasoning step", () => {
+  const state = createSessionState();
+  const io = fakeIo();
+  state.pending = { kind: "model", models: [{ slug: "gpt-5.4", reasoningLevels: ["low"] }] };
+  resolveSelection("some-custom-model", state, io);
+  assert.equal(state.model, "some-custom-model");
+  assert.equal(state.pending, null);
+});
+
+test("/permissions is an alias that opens the approval picker", async () => {
+  const state = createSessionState();
+  const io = fakeIo();
+  await handleCommand("/permissions", state, io, fakeDeps());
+  assert.equal(state.pending.kind, "approvals");
+  assert.ok(io.out().includes("approval / sandbox"));
+  assert.ok(io.out().includes("Read Only"));
+});
+
+test("picking an approval preset by number applies sandbox + full-auto", () => {
+  const state = createSessionState();
+  const io = fakeIo();
+  state.pending = { kind: "approvals" };
+  resolveSelection("3", state, io); // full-auto
+  assert.equal(state.fullAuto, true);
+  assert.equal(state.sandbox, null);
+  assert.ok(io.out().includes("Full Auto"));
+});
+
+test("approval picker accepts a mode name and blank cancels", () => {
+  const state = createSessionState();
+  const io = fakeIo();
+  state.pending = { kind: "approvals" };
+  resolveSelection("read-only", state, io);
+  assert.equal(state.sandbox, "read-only");
+
+  state.pending = { kind: "approvals" };
+  resolveSelection("", state, io);
+  assert.ok(io.out().includes("unchanged"));
+  assert.equal(state.pending, null);
 });
 
 test("/new marks the session fresh and forgets the thread id", async () => {
@@ -152,6 +232,13 @@ test("executeTurn without auto uses the manual model and marks session continuin
   assert.equal(deps.calls.runTurn[0].model, "manual-model");
   assert.equal(deps.calls.runTurn[0].fresh, true);
   assert.equal(state.fresh, false);
+});
+
+test("executeTurn forwards a manually chosen reasoning level", async () => {
+  const state = createSessionState({ model: "manual-model", reasoningEffort: "high" });
+  const deps = fakeDeps();
+  await executeTurn("do things", state, fakeIo(), deps);
+  assert.equal(deps.calls.runTurn[0].reasoningEffort, "high");
 });
 
 test("executeTurn with auto uses the classifier model and prints the auto line", async () => {
