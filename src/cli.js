@@ -101,6 +101,7 @@ export async function runCli(argv, io, deps = {}) {
         requestedModel,
         recommendedModel: recommendedModelForRoute(run.classification.routeId, routeModels),
         recommendedReasoningLevel: run.classification.reasoningLevel,
+        summaryRoute: summaryRouteFor(run.classification.routeId, run.classification.reasoningLevel),
         ...(run.routingAssessment ? { routingAssessment: run.routingAssessment } : {}),
         classification: run.classification,
         metrics: run.metrics,
@@ -158,6 +159,13 @@ function reasoningLevelsForRoute(routeId, env = {}) {
 
 function recommendedModelForRoute(routeId, routeModels = DEFAULT_ROUTE_MODELS) {
   return routeModels[routeId] || null;
+}
+
+function summaryRouteFor(routeId, reasoningLevel) {
+  const routeRank = { economy: 0, balanced: 1, advanced: 2 };
+  const reasoningRank = { low: 0, medium: 1, high: 2, xhigh: 3 };
+  const combinedRank = Math.max(routeRank[routeId] ?? 0, reasoningRank[reasoningLevel] >= 2 ? 2 : reasoningRank[reasoningLevel] ?? 0);
+  return ["economy", "balanced", "advanced"][combinedRank];
 }
 
 function parseArgs(argv) {
@@ -238,7 +246,7 @@ function summarizeRuns(runs) {
   let latencySum = 0;
 
   for (const run of runs) {
-    const routeId = run.classification.routeId;
+    const routeId = run.summaryRoute;
     routeCounts.set(routeId, (routeCounts.get(routeId) || 0) + 1);
     for (const key of Object.keys(tokenSums)) {
       tokenSums[key] += run.metrics[key] ?? 0;

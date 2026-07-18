@@ -77,6 +77,8 @@ test("CLI repeat mode records one Codex request per run, saves results, and leav
   assert.equal(report.runs[0].requestedModel, "mock-model");
   assert.equal(report.runs[0].recommendedModel, "gpt-5.4");
   assert.equal(report.runs[0].recommendedReasoningLevel, "medium");
+  assert.equal(report.runs[0].summaryRoute, "balanced");
+  assert.equal(report.runs[0].recommendedReasoningLevel, "medium");
   assert.equal(report.summary.repeat, 2);
   assert.equal(report.summary.averageTokens.totalTokens, 15);
   assert.equal(report.summary.routeAgreement.routeId, "balanced");

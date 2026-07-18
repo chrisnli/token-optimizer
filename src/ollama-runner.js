@@ -12,7 +12,7 @@ const LARGE_REPO_BYTES = 10 * 1024 * 1024;
 const VERY_LARGE_REPO_BYTES = 50 * 1024 * 1024;
 const LOCAL_CLASSIFIER_GUIDANCE = [
   "You are a conservative routing classifier for coding tasks. Judge the work needed to complete the user's request, not whether the prompt is short.",
-  "Choose routeId for model capacity and reasoningLevel independently. routeId reflects repository breadth, implementation scope, and verification burden; reasoningLevel reflects ambiguity, diagnosis, planning, and conceptual difficulty.",
+  "Choose routeId for model capacity and reasoningLevel independently. routeId reflects repository size, implementation scope, and verification burden only; reasoningLevel reflects ambiguity, diagnostic difficulty, planning, and conceptual complexity only. Do not let ambiguity alone raise routeId or repository size alone raise reasoningLevel. The caller derives a summary route from both results.",
   "Choose the least expensive model and reasoning combination that is likely to succeed. Economy is only for a clearly specified, localized, low-risk edit with an obvious target and little or no verification.",
   "Use balanced for a bug fix with no diagnosed cause or named target, work that needs repository inspection or related tests, several plausible files, or authentication, authorization, sessions, credentials, tokens, permissions, payments, or data handling.",
   "Use advanced for a security vulnerability or incident, credential exposure, broad identity redesign, migration, concurrency, architecture, data loss risk, or likely cross-cutting debugging. Do not make ordinary auth bug fixes advanced by default.",
@@ -291,19 +291,12 @@ export function assessRouting(prompt, repoProfile = {}) {
 
   if (veryLargeRepo) addModel("very_large_repository", 4);
   else if (largeRepo) addModel("large_repository", 2);
-  if (veryVague) {
-    addModel("very_vague_prompt", 2);
-    addReasoning("very_vague_prompt", 4);
-  } else if (vague) {
-    addModel("vague_prompt", 1);
-    addReasoning("vague_prompt", 2);
-  }
+  if (veryVague) addReasoning("very_vague_prompt", 4);
+  else if (vague) addReasoning("vague_prompt", 2);
   if (unspecifiedBug) {
-    addModel("unspecified_bug", 2);
     addReasoning("unspecified_bug", 1);
   }
   if (unspecifiedIdentityWork && !unspecifiedBug) {
-    addModel("unspecified_identity_work", 2);
     addReasoning("unspecified_identity_work", 1);
   }
   if (security) {
@@ -338,7 +331,7 @@ export function assessRouting(prompt, repoProfile = {}) {
     addModel("high_reasoning_domain", 2);
     addReasoning("high_reasoning_domain", 4);
   }
-  if (largeRepo && (vague || broadScope || difficultDebugging)) addModel("repository_context_multiplier", 2);
+  if (largeRepo && (broadScope || migration || operationalDataRisk)) addModel("repository_context_multiplier", 2);
   if (exactTarget && !security && !concurrency) {
     modelSignals.push("precise_target");
     reasoningSignals.push("precise_target");

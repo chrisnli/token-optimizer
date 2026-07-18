@@ -73,10 +73,10 @@ test("accepts classifier JSON wrapped in incidental model text", async () => {
     }), { status: 200, headers: { "content-type": "application/json" } })
   });
 
-  assert.equal(result.classification.routeId, "balanced");
+  assert.equal(result.classification.routeId, "economy");
   assert.equal(result.classification.reasoningLevel, "medium");
   assert.deepEqual(result.classification.candidateFiles, []);
-  assert.match(result.classification.reason, /Model floor balanced/);
+  assert.match(result.classification.reason, /reasoning floor medium/);
   assert.equal(result.validation.valid, true);
 });
 
@@ -142,17 +142,17 @@ test("applies an advanced floor to broad authentication migrations", async () =>
   assert.match(result.classification.reason, /Model floor advanced/);
 });
 
-test("uses repository size as a multiplier for vague tasks", () => {
+test("keeps repository size and prompt ambiguity as separate routing inputs", () => {
   const assessment = assessRouting("Improve the codebase", {
     totalFiles: 1200,
     totalBytes: 20 * 1024 * 1024
   });
 
-  assert.equal(assessment.minimumRoute, "advanced");
+  assert.equal(assessment.minimumRoute, "balanced");
   assert.equal(assessment.minimumReasoningLevel, "high");
   assert(assessment.modelSignals.includes("large_repository"));
   assert(assessment.reasoningSignals.includes("very_vague_prompt"));
-  assert(assessment.modelSignals.includes("repository_context_multiplier"));
+  assert.equal(assessment.modelSignals.includes("repository_context_multiplier"), false);
 });
 
 test("does not force an exact one-file edit in a large repository to advanced", () => {
@@ -180,7 +180,7 @@ test("forces high-reasoning concurrency work to advanced in a small repository",
 test("treats a context-free prompt as very ambiguous", () => {
   const assessment = assessRouting("Fix it", { totalFiles: 20, totalBytes: 10000 });
 
-  assert.equal(assessment.minimumRoute, "balanced");
+  assert.equal(assessment.minimumRoute, "economy");
   assert.equal(assessment.minimumReasoningLevel, "high");
   assert.equal(assessment.promptAmbiguity, "very_high");
 });

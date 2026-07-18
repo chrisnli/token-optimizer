@@ -19,7 +19,7 @@ export class CodexInvocationError extends Error {
 
 export function buildClassifierPayload({ prompt, repoProfile, routeModels = {}, routeCandidates = null }) {
   const compactProfile = compactRepositoryProfile(repoProfile);
-  return `Classify. Choose the option with lowest expected total token use that is still likely to finish correctly. Do not assume lower model+higher reasoning is cheaper than higher model+lower reasoning. Upgrade only for likely success. Do not execute or inspect files. Return only JSON. Keep strings terse, use at most 6 candidate files, and use labels such as "targeted" or "related_suite" where appropriate.\n${JSON.stringify({
+  return `Classify. Determine routeId and reasoningLevel independently, then report both. routeId selects model capacity from repository size, implementation scope, and verification burden only. reasoningLevel selects thinking effort from ambiguity, diagnostic difficulty, and conceptual complexity only. Do not let ambiguity alone raise routeId or repository size alone raise reasoningLevel. The caller derives the summary route from both results. Choose the lowest expected total token use that is still likely to finish correctly. Do not execute or inspect files. Return only JSON. Keep strings terse, use at most 6 candidate files, and use labels such as "targeted" or "related_suite" where appropriate.\n${JSON.stringify({
     prompt,
     repo: compactProfile,
     routes: routeRows(routeModels, routeCandidates)
