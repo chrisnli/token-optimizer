@@ -43,20 +43,25 @@ harness owns the input line and delegates each turn to codex's non-interactive i
 
 ## Implementation
 
-Rust binary crate in `harness/` (kept out of the repo root so it won't collide with the
-Node classifier's root layout when branches merge). Produces the `smartcodex` executable.
+Node ≥20, ESM, zero runtime dependencies, `node --test` — the same conventions as the
+classifier branches. Same root layout (`package.json`, `bin/`, `src/`, `test/`) so the
+branches merge into one npm package with two bins: `smartcodex` (this harness) and
+`smartcodex-classify` (the classifier). The REPL uses `node:readline` (line editing +
+in-session history, no dependency).
 
-Dependencies: `clap`, `serde` + `serde_json`, `anyhow`, `rustyline`.
+> Language history: Rust was chosen initially, but no Rust toolchain is installed on the
+> dev machine and the user opted to stay with Node rather than install one.
 
-### Modules (`harness/src/`)
+### Modules
 
 | Module | Responsibility |
 |---|---|
-| `main.rs` | clap arg parsing, startup checks, wiring |
-| `repl.rs` | input loop, slash-command dispatch, session state (auto flag, model, approval mode, fresh-vs-resume) |
-| `router.rs` | route → model map with `SMARTCODEX_ROUTE_<ROUTE>_MODEL` env overrides (defaults: economy → `gpt-5.4-mini`, balanced → `gpt-5.4`, advanced → `gpt-5.6-sol`) |
-| `classifier.rs` | spawns the Node classify CLI, parses + validates its JSON report, applies timeout and fallback |
-| `turn.rs` | builds and spawns the `codex exec` command for one turn, streams output through |
+| `bin/smartcodex.js` | thin shebang entry, calls `runHarness` |
+| `src/harness-cli.js` | arg parsing, startup checks, wiring |
+| `src/repl.js` | input loop, slash-command dispatch, session state (auto flag, model, approval mode, fresh-vs-resume) |
+| `src/router.js` | route → model map with `SMARTCODEX_ROUTE_<ROUTE>_MODEL` env overrides (defaults: economy → `gpt-5.4-mini`, balanced → `gpt-5.4`, advanced → `gpt-5.6-sol`) |
+| `src/classifier-bridge.js` | spawns the classify CLI (or its in-package `bin/` script once branches merge), parses + validates its JSON report, applies timeout and fallback |
+| `src/turn.js` | builds and spawns the `codex exec` command for one turn, streams output through |
 
 ### CLI
 
@@ -117,19 +122,21 @@ Unknown commands: codex-style "unknown command" error.
 
 ### Testing
 
-- `cargo test` units: router mapping + env overrides; slash-command dispatch (one test
+- `node --test` units: router mapping + env overrides; slash-command dispatch (one test
   per mapping); classifier JSON parsing incl. malformed-output fallback; exact codex
   argument construction (first turn vs resume vs dry-run).
-- E2E: drive the built binary with scripted stdin in `--dry-run` mode; assert printed
-  commands. A stub classify script stands in for the Node classifier, so CI needs
-  neither codex nor Node.
+- E2E: drive the bin with scripted stdin in `--dry-run` mode; assert printed
+  commands. A stub classify script stands in for the real classifier, so tests need
+  no codex and no classifier branch.
 - Manual smoke checklist against real codex: model switches on `resume`, streaming,
   Ctrl+C behavior.
 
 ## Risks / assumptions to verify first
 
-1. **`codex exec resume` accepts `--model` per turn** (load-bearing). Verify against the
-   installed codex before writing the REPL.
+1. **`codex exec resume` accepts `--model` per turn** (load-bearing). Verified against
+   codex-cli 0.142.3: `exec resume` takes `-m/--model` (plus `--last`, `[SESSION_ID]`,
+   `[PROMPT]`). Whether the model truly switches mid-conversation is confirmed in the
+   live smoke test.
 2. `resume --last` grabs the most recent codex session; running plain codex concurrently
    in another terminal could confuse continuity. Accepted for v1; later fix is capturing
    the real session id from codex output.

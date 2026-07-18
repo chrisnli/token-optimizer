@@ -7,68 +7,66 @@ Environment facts verified 2026-07-17:
 - `codex-cli 0.142.3` installed; `codex exec resume` supports `--last`, `[SESSION_ID]`,
   `[PROMPT]`, and `-m/--model` per invocation (assumption #1 of the design holds at the
   flag level).
-- Rust toolchain **not installed** — installing rustup is step 0.
+- Language is Node ≥20 (Rust was considered; no toolchain installed, user chose Node).
 
 Each step ends with a verification. Do them in order; commit after each green step.
 
-## Step 0 — Toolchain
-Install rustup (stable toolchain, MSVC target) — requires user approval.
-**Verify:** `cargo --version` works in PowerShell.
+## Step 0 — Toolchain check
+**Verify:** `node --version` ≥ 20 and `codex --version` works.
 
 ## Step 1 — Scaffold
-`harness/` Cargo binary crate named `smartcodex`. Deps: `clap` (derive), `serde`
-(derive), `serde_json`, `anyhow`, `rustyline`. Stub `main.rs` printing help.
-**Verify:** `cargo build` succeeds; `.gitignore` covers `harness/target/`.
+Root `package.json` (ESM, `bin: { smartcodex: ./bin/smartcodex.js }`, scripts `test` =
+`node --test`, engines node ≥20, zero deps — mirroring the classifier branches so they
+merge into one package). Thin `bin/smartcodex.js`.
+**Verify:** `node bin/smartcodex.js --help` prints usage.
 
-## Step 2 — `router.rs`
-`Route` enum (`Economy`, `Balanced`, `Advanced`) with `FromStr`; `model_for_route(route,
-env)` honoring `SMARTCODEX_ROUTE_<ROUTE>_MODEL` overrides; defaults economy →
-`gpt-5.4-mini`, balanced → `gpt-5.4`, advanced → `gpt-5.6-sol`.
-**Verify:** unit tests — default mapping, env override, unknown route string.
+## Step 2 — `src/router.js`
+`ROUTE_MODELS` defaults (economy → `gpt-5.4-mini`, balanced → `gpt-5.4`, advanced →
+`gpt-5.6-sol`); `modelForRoute(routeId, env)` honoring
+`SMARTCODEX_ROUTE_<ROUTE>_MODEL` overrides; unknown route → null.
+**Verify:** unit tests — default mapping, env override, unknown route.
 
-## Step 3 — `classifier.rs`
-Serde structs for the classify CLI's report (fields used: `classification.routeId`,
-`classification.confidence`, `classification.reason`, `recommendedModel`; unknown fields
-ignored). `classify(prompt, cwd, cfg) -> Result<Classification>` spawning
-`SMARTCODEX_CLASSIFY_BIN` (default `smartcodex-classify`) with a timeout
-(`SMARTCODEX_CLASSIFY_TIMEOUT_MS`, default 120s). Errors map to a `Fallback` outcome the
-caller turns into the balanced route + printed warning.
-**Verify:** unit tests with a stub script (batch/sh) emitting good JSON, bad JSON,
-nonzero exit, and a sleep past the timeout.
+## Step 3 — `src/classifier-bridge.js`
+`classifyPrompt(prompt, { cwd, env, timeoutMs }) -> { ok, classification?, model?,
+warning? }`. Resolution order for the classify command: `SMARTCODEX_CLASSIFY_BIN` env →
+in-package `bin/smartcodex-classify.js` (exists after branches merge) → bare
+`smartcodex-classify` on PATH. Parses the classify CLI's JSON report (uses
+`classification.routeId` / `confidence` / `reason` and `recommendedModel`; ignores the
+rest). Timeout default 120s. Any failure returns `ok: false` + warning; caller falls
+back to the balanced route.
+**Verify:** unit tests with stub scripts (good JSON, bad JSON, nonzero exit, timeout).
 
-## Step 4 — `turn.rs`
-`TurnSpec { prompt, model: Option<String>, sandbox: Option<String>, full_auto: bool,
-fresh: bool }`. Pure `build_command(spec) -> Vec<String>`: fresh → `exec …`, else →
-`exec resume --last …`; include `--model` only when set. `run_turn` spawns codex with
-inherited stdio, returns exit status; `--dry-run` prints the command instead. Ctrl+C
-during a turn kills the child (handler shared with the REPL).
-**Verify:** unit tests on `build_command` — first turn, resume, no-model, sandbox and
-full-auto forwarding, dry-run formatting.
+## Step 4 — `src/turn.js`
+`buildTurnArgs(spec)` pure: `{ prompt, model, sandbox, fullAuto, fresh }` →
+`exec …` (fresh) or `exec resume --last …`; `--model` only when set; sandbox /
+full-auto forwarding. `runTurn` spawns codex with inherited stdio (Windows `.cmd`
+resolution handled like the classifier's codex-runner does); dry-run prints the command
+instead. Ctrl+C during a turn kills the child, not the REPL.
+**Verify:** unit tests on `buildTurnArgs` — first turn, resume, no-model, sandbox,
+full-auto, dry-run formatting.
 
-## Step 5 — `repl.rs`
-`SessionState { auto: bool, model: Option<String>, sandbox: Option<String>, full_auto:
-bool, fresh: bool, last_classification: Option<Classification> }`. rustyline loop.
-Dispatch table exactly per the design's slash-command table (`/auto`, `/model`,
-`/approvals`, `/new`, `/init`, `/diff`, `/status`, `/mcp`, `/login`, `/logout`,
-`/quit`, `/exit`, `/help`, `/compact` + `/mention` explanations, unknown-command error).
-Prompt path: auto on → classify → print `[auto] route=… → model (confidence …) — "…"` →
-run turn; auto off → run turn with manual model.
-**Verify:** unit tests on the dispatcher (command parsing + state transitions), one per
+## Step 5 — `src/repl.js`
+Session state `{ auto, model, sandbox, fullAuto, fresh, lastClassification }`.
+`node:readline` loop. Dispatch table exactly per the design's slash-command table
+(`/auto`, `/model`, `/approvals`, `/new`, `/init`, `/diff`, `/status`, `/mcp`,
+`/login`, `/logout`, `/quit`, `/exit`, `/help`, `/compact` + `/mention` explanations,
+unknown-command error). Prompt path: auto on → classify → print
+`[auto] route=… → model (confidence …) — "…"` → run turn.
+**Verify:** unit tests on `handleCommand` (parsing + state transitions), one per
 mapping.
 
-## Step 6 — `main.rs`
-clap: `--auto`, `--model`, `--codex-bin`, `--sandbox`, `--full-auto`, `--dry-run`,
-optional initial prompt. Startup check that the codex binary resolves (clear error
-otherwise). Wire flags into `SessionState`, run initial prompt if given, enter loop.
-**Verify:** `smartcodex --dry-run "hello"` prints a `codex exec …` command;
-`smartcodex --auto --dry-run "hello"` additionally prints the classification line (stub
-classifier via env var).
+## Step 6 — `src/harness-cli.js`
+Args: `--auto`, `--model`, `--codex-bin`, `--sandbox`, `--full-auto`, `--dry-run`,
+`--help`, optional initial prompt. Startup check that the codex binary resolves. Wire
+into session state, run initial prompt if given, enter loop.
+**Verify:** `node bin/smartcodex.js --dry-run "hello"` prints a `codex exec …` command;
+with `--auto` + stub classifier it also prints the `[auto]` line.
 
 ## Step 7 — E2E dry-run test
-Integration test driving the built binary with scripted stdin: `/model x` → prompt →
-`/new` → prompt → `/auto on` (stub classifier) → prompt; assert the printed dry-run
-commands and `[auto]` lines. No codex, no Node needed.
-**Verify:** `cargo test` green.
+Integration test driving the bin with scripted stdin: `/model x` → prompt → `/new` →
+prompt → `/auto on` (stub classifier) → prompt; assert printed dry-run commands and
+`[auto]` lines. No codex needed.
+**Verify:** `node --test` green.
 
 ## Step 8 — Live smoke test (needs user OK — spends codex tokens)
 Tiny real session: prompt on model A, `/model` switch, second prompt resumes on model B;
