@@ -28,8 +28,13 @@ export async function runHarness(argv, io, deps = {}) {
     return 2;
   }
 
+  // Auto mode is the point of the tool, so it is on by default. Two things turn it off:
+  // --manual/--no-auto, or pinning a model with --model (unless --auto is also explicit).
+  const autoDefault = options.model ? false : true;
+  const auto = options.auto === null ? autoDefault : options.auto;
+
   const state = createSessionState({
-    auto: options.auto,
+    auto,
     model: options.model,
     sandbox: options.sandbox,
     fullAuto: options.fullAuto,
@@ -81,7 +86,7 @@ function makeRunSub(codexBin, io) {
 function parseArgs(argv) {
   const options = {
     help: false,
-    auto: false,
+    auto: null,
     model: null,
     codexBin: null,
     sandbox: null,
@@ -98,6 +103,10 @@ function parseArgs(argv) {
     }
     if (arg === "--auto") {
       options.auto = true;
+      continue;
+    }
+    if (arg === "--manual" || arg === "--no-auto") {
+      options.auto = false;
       continue;
     }
     if (arg === "--model" || arg === "-m") {
@@ -145,11 +154,13 @@ function helpText() {
     "Usage:",
     "  smartcodex [options] [\"initial prompt\"]",
     "",
-    "An interactive codex session where /auto lets a classifier pick the model per prompt.",
+    "An interactive codex session where a classifier picks the model per prompt.",
+    "Auto mode is on by default; toggle it any time with /auto.",
     "",
     "Options:",
-    "  --auto              start with auto mode on",
-    "  --model, -m <m>     start with a manually selected model",
+    "  --auto              start with auto mode on (the default)",
+    "  --manual, --no-auto start with auto mode off (use codex's default model)",
+    "  --model, -m <m>     pin a model manually (implies --manual unless --auto given)",
     "  --codex-bin <path>  codex executable (default: codex on PATH, or SMARTCODEX_CODEX_BIN)",
     "  --sandbox <mode>    forwarded to codex (read-only | workspace-write | danger-full-access)",
     "  --full-auto         forwarded to codex",

@@ -35,9 +35,13 @@ no `user`/`codex` labels or session headers.
 ### Usage
 
 ```
-node bin/smartcodex.js [--auto] [--model <m>] [--sandbox <mode>] [--full-auto]
-                       [--codex-bin <path>] [--dry-run] ["initial prompt"]
+node bin/smartcodex.js [--auto | --manual] [--model <m>] [--sandbox <mode>]
+                       [--full-auto] [--codex-bin <path>] [--dry-run] ["initial prompt"]
 ```
+
+**Auto mode is on by default** — the classifier picks the model for every prompt without
+you doing anything. Turn it off with `--manual` (or `--no-auto`) to use codex's own
+default model, or pin a specific model with `--model <m>` (which implies manual).
 
 Inside the session:
 

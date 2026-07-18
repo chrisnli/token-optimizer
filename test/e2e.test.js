@@ -66,7 +66,7 @@ test("scripted session: manual model, resume, /new, /auto, /quit", async () => {
       ""
     ].join("\n");
 
-    const result = await runHarnessProcess(["--dry-run"], session, {
+    const result = await runHarnessProcess(["--dry-run", "--manual"], session, {
       SMARTCODEX_CLASSIFY_BIN: stubPath
     });
 
@@ -90,6 +90,44 @@ test("initial prompt argument runs as the first turn", async () => {
   const result = await runHarnessProcess(["--dry-run", "--model", "x", "hi there"], "");
   assert.equal(result.exitCode, 0, `stderr: ${result.stderr}`);
   assert.ok(result.stdout.includes('[dry-run] codex exec --model x "hi there"'));
+});
+
+test("auto mode is on by default and classifies the first prompt", async () => {
+  const stubDir = await fs.mkdtemp(path.join(os.tmpdir(), "smartcodex-e2e-"));
+  const stubPath = path.join(stubDir, "stub-classify.js");
+  const report = {
+    recommendedModel: "stub-model",
+    recommendedReasoningLevel: "low",
+    classification: { routeId: "economy", confidence: 0.9, reason: "stubbed" }
+  };
+  await fs.writeFile(stubPath, `process.stdout.write(${JSON.stringify(JSON.stringify(report))});`, "utf8");
+  try {
+    const result = await runHarnessProcess(["--dry-run"], "whats 1+1\n/quit\n", {
+      SMARTCODEX_CLASSIFY_BIN: stubPath
+    });
+    assert.equal(result.exitCode, 0, `stderr: ${result.stderr}`);
+    assert.ok(result.stdout.includes("smartcodex (auto: on"));
+    assert.ok(result.stdout.includes("[auto] stub-model · reasoning low"));
+    assert.ok(result.stdout.includes('[dry-run] codex exec --model stub-model'));
+  } finally {
+    await fs.rm(stubDir, { recursive: true, force: true });
+  }
+});
+
+test("--manual starts in manual mode and passes no model to codex", async () => {
+  const result = await runHarnessProcess(["--dry-run", "--manual"], "whats 1+1\n/quit\n");
+  assert.equal(result.exitCode, 0, `stderr: ${result.stderr}`);
+  assert.ok(result.stdout.includes("smartcodex (auto: off"));
+  assert.ok(!result.stdout.includes("[auto]"));
+  assert.ok(result.stdout.includes('[dry-run] codex exec "whats 1+1"'));
+});
+
+test("--model pins a model and does not auto-classify", async () => {
+  const result = await runHarnessProcess(["--dry-run", "--model", "gpt-5.4", "whats 1+1"], "/quit\n");
+  assert.equal(result.exitCode, 0, `stderr: ${result.stderr}`);
+  assert.ok(result.stdout.includes("smartcodex (auto: off"));
+  assert.ok(!result.stdout.includes("[auto]"));
+  assert.ok(result.stdout.includes('[dry-run] codex exec --model gpt-5.4 "whats 1+1"'));
 });
 
 test("--help prints usage without starting a session", async () => {
