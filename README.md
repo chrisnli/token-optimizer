@@ -6,16 +6,24 @@ An interactive session that feels like regular codex, plus an **auto mode**: typ
 `/auto` and every prompt is first sent to a cheap classifier that picks the most
 token-efficient model (economy / balanced / advanced route); the turn then runs on that
 model via `codex exec` / `codex exec resume`, so conversation context carries across
-turns while the model can change per prompt. The chosen model, route, confidence, and
-reason are printed before each turn. Regular messages pass through to codex verbatim.
+turns while the model can change per prompt. The classifier also recommends a reasoning
+level, forwarded to codex as `model_reasoning_effort`. The chosen model, route,
+reasoning level, confidence, and reason are printed before each turn:
+
+```
+[auto] route=economy → gpt-5.4-mini (reasoning low, confidence 0.9) — "single-file fix"
+```
+
+Regular messages pass through to codex verbatim.
 
 ### Requirements
 
 - Node ≥ 20 and the [Codex CLI](https://github.com/openai/codex) on PATH (or set
   `SMARTCODEX_CODEX_BIN`).
-- For auto mode: the `smartcodex-classify` CLI (built on the classifier branches of this
-  repo). Point `SMARTCODEX_CLASSIFY_BIN` at it if it is not on PATH. Without it, auto
-  mode warns and falls back to the balanced-route model.
+- The classifier (`smartcodex-classify`, in this repo under `bin/`) is found
+  automatically; `SMARTCODEX_CLASSIFY_BIN` can point at a different copy. It classifies
+  via a cheap codex model by default, or locally via ollama (`SMARTCODEX_CLASSIFIER=ollama`).
+  If classification fails, auto mode warns and falls back to the balanced-route model.
 
 ### Usage
 

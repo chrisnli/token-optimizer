@@ -48,6 +48,7 @@ test("scripted session: manual model, resume, /new, /auto, /quit", async () => {
   const stubPath = path.join(stubDir, "stub-classify.js");
   const report = {
     recommendedModel: "stub-model",
+    recommendedReasoningLevel: "low",
     classification: { routeId: "economy", confidence: 0.9, reason: "stubbed" }
   };
   await fs.writeFile(stubPath, `process.stdout.write(${JSON.stringify(JSON.stringify(report))});`, "utf8");
@@ -74,8 +75,10 @@ test("scripted session: manual model, resume, /new, /auto, /quit", async () => {
     assert.ok(result.stdout.includes('[dry-run] codex exec --model my-model "hello world"'));
     assert.ok(result.stdout.includes("[dry-run] codex exec resume --last --model my-model again"));
     assert.ok(result.stdout.includes('[dry-run] codex exec --model my-model "third one"'));
-    assert.ok(result.stdout.includes("[auto] route=economy → stub-model"));
-    assert.ok(result.stdout.includes('[dry-run] codex exec resume --last --model stub-model "auto please"'));
+    assert.ok(result.stdout.includes("[auto] route=economy → stub-model (reasoning low, confidence 0.9)"));
+    assert.ok(result.stdout.includes("model_reasoning_effort"));
+    assert.ok(result.stdout.includes('"auto please"'));
+    assert.ok(result.stdout.includes("codex exec resume --last --model stub-model"));
   } finally {
     await fs.rm(stubDir, { recursive: true, force: true });
   }

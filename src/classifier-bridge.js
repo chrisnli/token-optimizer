@@ -44,6 +44,10 @@ export async function classifyPrompt(prompt, { cwd, env = process.env, timeoutMs
     return { ok: false, warning: `classifier returned unknown route: ${JSON.stringify(routeId)}` };
   }
 
+  const reasoningLevel = typeof report.recommendedReasoningLevel === "string"
+    ? report.recommendedReasoningLevel
+    : (typeof classification.reasoningLevel === "string" ? classification.reasoningLevel : null);
+
   return {
     ok: true,
     routeId,
@@ -51,7 +55,9 @@ export async function classifyPrompt(prompt, { cwd, env = process.env, timeoutMs
     reason: typeof classification.reason === "string" ? classification.reason : "",
     model: typeof report.recommendedModel === "string" && report.recommendedModel
       ? report.recommendedModel
-      : modelForRoute(routeId, env)
+      : modelForRoute(routeId, env),
+    // only simple level words may reach the -c model_reasoning_effort override
+    reasoningLevel: reasoningLevel && /^[a-z]+$/.test(reasoningLevel) ? reasoningLevel : null
   };
 }
 

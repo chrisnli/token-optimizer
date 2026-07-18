@@ -41,6 +41,16 @@ test("sandbox and full-auto become -c overrides on resumed turns", () => {
   ]);
 });
 
+test("reasoning effort becomes a -c override on any turn", () => {
+  const args = buildTurnArgs({ prompt: "p", model: "m", reasoningEffort: "low", fresh: true });
+  assert.deepEqual(args, ["exec", "--model", "m", "-c", 'model_reasoning_effort="low"', "p"]);
+
+  const resumeArgs = buildTurnArgs({ prompt: "p", model: "m", reasoningEffort: "high", fresh: false });
+  assert.deepEqual(resumeArgs, [
+    "exec", "resume", "--last", "--model", "m", "-c", 'model_reasoning_effort="high"', "p"
+  ]);
+});
+
 test("display formatting quotes arguments with spaces", () => {
   const display = formatCommandDisplay("codex", ["exec", "--model", "m", "two words"]);
   assert.equal(display, 'codex exec --model m "two words"');

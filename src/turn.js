@@ -9,6 +9,9 @@ export function buildTurnArgs(spec) {
   if (spec.model) {
     args.push("--model", spec.model);
   }
+  if (spec.reasoningEffort) {
+    args.push("-c", `model_reasoning_effort="${spec.reasoningEffort}"`);
+  }
   // `exec resume` has no --sandbox/--full-auto flags (verified on codex-cli 0.142.3);
   // resumed turns get the equivalent -c config overrides instead.
   if (spec.sandbox) {

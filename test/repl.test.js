@@ -163,6 +163,18 @@ test("executeTurn with auto uses the classifier model and prints the auto line",
   assert.equal(state.lastClassification.model, "auto-model");
 });
 
+test("executeTurn forwards the classifier's reasoning level", async () => {
+  const state = createSessionState({ auto: true });
+  const deps = fakeDeps();
+  deps.classify = async () => ({
+    ok: true, routeId: "advanced", confidence: 0.8, reason: "hard", model: "big", reasoningLevel: "high"
+  });
+  const io = fakeIo();
+  await executeTurn("x", state, io, deps);
+  assert.equal(deps.calls.runTurn[0].reasoningEffort, "high");
+  assert.ok(io.out().includes("(reasoning high, confidence 0.8)"));
+});
+
 test("executeTurn falls back to balanced model when the classifier fails", async () => {
   const state = createSessionState({ auto: true });
   const deps = fakeDeps();

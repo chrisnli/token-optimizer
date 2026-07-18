@@ -136,11 +136,13 @@ export async function handleCommand(line, state, io, deps) {
 
 export async function executeTurn(prompt, state, io, deps) {
   let model = state.model;
+  let reasoningEffort = null;
 
   if (state.auto) {
     const result = await deps.classify(prompt, { cwd: io.cwd, env: io.env });
     if (result.ok) {
       model = result.model;
+      reasoningEffort = result.reasoningLevel || null;
       state.lastClassification = result;
       io.stdout.write(formatAutoLine(result));
     } else {
@@ -152,6 +154,7 @@ export async function executeTurn(prompt, state, io, deps) {
   const spec = {
     prompt,
     model,
+    reasoningEffort,
     sandbox: state.sandbox,
     fullAuto: state.fullAuto,
     fresh: state.fresh
@@ -173,9 +176,16 @@ export async function executeTurn(prompt, state, io, deps) {
 }
 
 export function formatAutoLine(result) {
-  const confidence = result.confidence == null ? "" : ` (confidence ${result.confidence})`;
+  const details = [];
+  if (result.reasoningLevel) {
+    details.push(`reasoning ${result.reasoningLevel}`);
+  }
+  if (result.confidence != null) {
+    details.push(`confidence ${result.confidence}`);
+  }
+  const detailText = details.length > 0 ? ` (${details.join(", ")})` : "";
   const reason = result.reason ? ` — "${result.reason}"` : "";
-  return `[auto] route=${result.routeId} → ${result.model}${confidence}${reason}\n`;
+  return `[auto] route=${result.routeId} → ${result.model}${detailText}${reason}\n`;
 }
 
 export async function runRepl(state, io, deps) {

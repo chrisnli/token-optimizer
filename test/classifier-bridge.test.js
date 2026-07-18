@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { classifyPrompt } from "../src/classifier-bridge.js";
+import { classifyPrompt, resolveClassifyCommand } from "../src/classifier-bridge.js";
 
 async function withStub(script, run) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "smartcodex-stub-"));
@@ -18,6 +18,7 @@ async function withStub(script, run) {
 
 const GOOD_REPORT = {
   recommendedModel: "stub-model",
+  recommendedReasoningLevel: "low",
   classification: { routeId: "economy", confidence: 0.88, reason: "tiny change" }
 };
 
@@ -30,6 +31,21 @@ test("valid classifier report is parsed", async () => {
     assert.equal(result.model, "stub-model");
     assert.equal(result.confidence, 0.88);
     assert.equal(result.reason, "tiny change");
+    assert.equal(result.reasoningLevel, "low");
+  });
+});
+
+test("malformed reasoning level is dropped", async () => {
+  const report = {
+    recommendedModel: "m",
+    recommendedReasoningLevel: 'weird"; injection',
+    classification: { routeId: "economy", confidence: 0.5, reason: "x" }
+  };
+  const script = `process.stdout.write(${JSON.stringify(JSON.stringify(report))});`;
+  await withStub(script, async (stubPath) => {
+    const result = await classifyPrompt("prompt", { env: { SMARTCODEX_CLASSIFY_BIN: stubPath } });
+    assert.equal(result.ok, true);
+    assert.equal(result.reasoningLevel, null);
   });
 });
 
@@ -99,8 +115,9 @@ test("slow classifier hits the timeout", async () => {
   });
 });
 
-test("missing classifier is a warning", async () => {
-  const result = await classifyPrompt("prompt", { env: { PATH: "", Path: "", PATHEXT: ".EXE" } });
-  assert.equal(result.ok, false);
-  assert.ok(result.warning.includes("classifier not found"));
+test("in-package classifier is discovered without env override or PATH", () => {
+  const resolved = resolveClassifyCommand({ PATH: "", Path: "", PATHEXT: ".EXE" });
+  assert.ok(resolved);
+  assert.equal(resolved.command, process.execPath);
+  assert.ok(resolved.args[0].endsWith("smartcodex-classify.js"));
 });
