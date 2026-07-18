@@ -6,6 +6,8 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 import {
+  CLASSIFIER_MODEL,
+  CLASSIFIER_REASONING_EFFORT,
   buildClassifierPayload,
   compactRepositoryProfile,
   extractUsage,
@@ -117,12 +119,12 @@ test("parses turn.completed event and extracts token usage", () => {
   });
 });
 
-test("runs Codex once from an empty temp directory with schema and stdin payload", async () => {
+test("runs fixed low-reasoning Codex classifier once in a fresh ephemeral task", async () => {
   const calls = [];
   const result = await runCodexClassifier({
     prompt: "Fix auth",
     repoProfile: { totalFiles: 0, files: [] },
-    classifierModel: "cheap-classifier-model",
+    classifierModel: "must-be-ignored",
     codexBin: "mock-codex",
     env: {
       PATH: process.env.PATH,
@@ -151,7 +153,13 @@ test("runs Codex once from an empty temp directory with schema and stdin payload
   assert.notEqual(calls[0].options.cwd, process.cwd());
   assert.match(calls[0].stdin, /Fix auth/);
   assert.equal(calls[0].args[0], "exec");
-  assert.equal(calls[0].args[calls[0].args.indexOf("--model") + 1], "cheap-classifier-model");
+  assert.equal(calls[0].args[calls[0].args.indexOf("--model") + 1], CLASSIFIER_MODEL);
+  assert(calls[0].args.includes("--ephemeral"));
+  assert(calls[0].args.includes("--ignore-user-config"));
+  assert(calls[0].args.includes("--ignore-rules"));
+  assert(!calls[0].args.includes("resume"));
+  assert(calls[0].args.includes(`model_reasoning_effort="${CLASSIFIER_REASONING_EFFORT}"`));
+  assert(calls[0].args.includes('model_verbosity="low"'));
   assert(calls[0].args.includes("--output-schema"));
   assert.deepEqual(result.classification, validClassification);
   assert.equal(result.metrics.inputTokens, 10);

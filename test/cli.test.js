@@ -30,7 +30,7 @@ test("CLI repeat mode records one Codex request per run, saves results, and leav
   ], {
     cwd: repo,
     env: {
-      SMARTCODEX_CLASSIFIER_MODEL: "cheap-fixed-classifier",
+      SMARTCODEX_CLASSIFIER_MODEL: "must-be-ignored",
       SMARTCODEX_TIMEOUT_MS: "10000"
     },
     stdin,
@@ -58,7 +58,7 @@ test("CLI repeat mode records one Codex request per run, saves results, and leav
 
   assert.equal(exitCode, 0, stderr.text);
   assert.equal(calls.length, 2);
-  assert.equal(calls[0].classifierModel, "cheap-fixed-classifier");
+  assert.equal(calls[0].classifierModel, undefined);
   assert.deepEqual(calls[0].routeModels, {
     economy: "gpt-5.4-mini",
     balanced: "gpt-5.4",
@@ -73,7 +73,7 @@ test("CLI repeat mode records one Codex request per run, saves results, and leav
 
   const report = JSON.parse(stdout.text);
   assert.equal(report.runs.length, 2);
-  assert.equal(report.runs[0].classifierModel, "cheap-fixed-classifier");
+  assert.equal(report.runs[0].classifierModel, "gpt-5.4-mini");
   assert.equal(report.runs[0].requestedModel, "mock-model");
   assert.equal(report.runs[0].recommendedModel, "gpt-5.4");
   assert.equal(report.runs[0].recommendedReasoningLevel, "medium");
