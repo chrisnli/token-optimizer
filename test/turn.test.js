@@ -17,7 +17,7 @@ test("model flag omitted when no model chosen", () => {
   assert.deepEqual(args, ["exec", "hello"]);
 });
 
-test("sandbox and full-auto are forwarded", () => {
+test("sandbox and full-auto are forwarded as flags on fresh turns", () => {
   const args = buildTurnArgs({
     prompt: "p",
     model: "m",
@@ -26,6 +26,19 @@ test("sandbox and full-auto are forwarded", () => {
     fresh: true
   });
   assert.deepEqual(args, ["exec", "--model", "m", "--sandbox", "workspace-write", "--full-auto", "p"]);
+});
+
+test("sandbox and full-auto become -c overrides on resumed turns", () => {
+  const sandboxArgs = buildTurnArgs({ prompt: "p", model: "m", sandbox: "read-only", fresh: false });
+  assert.deepEqual(sandboxArgs, [
+    "exec", "resume", "--last", "--model", "m", "-c", 'sandbox_mode="read-only"', "p"
+  ]);
+
+  const fullAutoArgs = buildTurnArgs({ prompt: "p", model: "m", fullAuto: true, fresh: false });
+  assert.deepEqual(fullAutoArgs, [
+    "exec", "resume", "--last", "--model", "m",
+    "-c", 'approval_policy="on-failure"', "-c", 'sandbox_mode="workspace-write"', "p"
+  ]);
 });
 
 test("display formatting quotes arguments with spaces", () => {

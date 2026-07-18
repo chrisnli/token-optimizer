@@ -83,7 +83,7 @@ shims onto the codex feature the TUI would invoke.
 |---|---|
 | `/auto [on\|off]` | smartcodex-only: toggle classifier-driven model selection |
 | `/model <m>` / `/model` | store model, forwarded as codex's `--model` flag (turns auto off); bare form shows current |
-| `/approvals <mode>` | stored, forwarded as codex's `--sandbox` / `--full-auto` flags |
+| `/approvals <mode>` | stored, forwarded as codex's `--sandbox` / `--full-auto` flags on fresh turns; `exec resume` lacks those flags (verified on 0.142.3) so resumed turns use `-c sandbox_mode=…` / `-c approval_policy=…` overrides |
 | `/new` | next turn runs fresh `codex exec` instead of `resume` |
 | `/init` | sends codex's standard AGENTS.md instruction as a turn |
 | `/diff` | runs `git diff` (what the codex TUI does) |

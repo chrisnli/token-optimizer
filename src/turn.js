@@ -9,11 +9,21 @@ export function buildTurnArgs(spec) {
   if (spec.model) {
     args.push("--model", spec.model);
   }
+  // `exec resume` has no --sandbox/--full-auto flags (verified on codex-cli 0.142.3);
+  // resumed turns get the equivalent -c config overrides instead.
   if (spec.sandbox) {
-    args.push("--sandbox", spec.sandbox);
+    if (spec.fresh) {
+      args.push("--sandbox", spec.sandbox);
+    } else {
+      args.push("-c", `sandbox_mode="${spec.sandbox}"`);
+    }
   }
   if (spec.fullAuto) {
-    args.push("--full-auto");
+    if (spec.fresh) {
+      args.push("--full-auto");
+    } else {
+      args.push("-c", 'approval_policy="on-failure"', "-c", 'sandbox_mode="workspace-write"');
+    }
   }
   args.push(spec.prompt);
   return args;
