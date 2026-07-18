@@ -7,8 +7,8 @@ An interactive session that feels like regular codex, plus an **auto mode**: typ
 token-efficient model (economy / balanced / advanced route); the turn then runs on that
 model via `codex exec` / `codex exec resume`, so conversation context carries across
 turns while the model can change per prompt. The classifier also recommends a reasoning
-level, forwarded to codex as `model_reasoning_effort`. The chosen model, route,
-reasoning level, confidence, and reason are printed before each turn:
+level, forwarded to codex as `model_reasoning_effort`. The chosen model and reasoning
+level are printed before each turn:
 
 ```
 [auto] gpt-5.4-mini · reasoning low
