@@ -7,7 +7,8 @@ import path from "node:path";
 import { CODEX_OUTPUT_SCHEMA, ROUTES, validateClassifierResult } from "./schema.js";
 
 const DEFAULT_TIMEOUT_MS = 120000;
-const DEFAULT_CLASSIFIER_MODEL = "gpt-5.4-mini";
+export const CLASSIFIER_MODEL = "gpt-5.4-mini";
+export const CLASSIFIER_REASONING_EFFORT = "low";
 
 export class CodexInvocationError extends Error {
   constructor(message, details = {}) {
@@ -57,7 +58,6 @@ export function compactRepositoryProfile(repoProfile) {
 export async function runCodexClassifier({
   prompt,
   repoProfile,
-  classifierModel = DEFAULT_CLASSIFIER_MODEL,
   routeModels = {},
   routeCandidates = null,
   codexBin = "codex",
@@ -75,7 +75,7 @@ export async function runCodexClassifier({
   const args = [
     "exec",
     "--model",
-    classifierModel,
+    CLASSIFIER_MODEL,
     "--sandbox",
     "read-only",
     "--ephemeral",
@@ -86,7 +86,9 @@ export async function runCodexClassifier({
     "--output-schema",
     schemaPath,
     "-c",
-    "model_reasoning_effort=\"low\"",
+    `model_reasoning_effort="${CLASSIFIER_REASONING_EFFORT}"`,
+    "-c",
+    "model_verbosity=\"low\"",
     "-"
   ];
 
@@ -601,6 +603,6 @@ function firstNumber(...values) {
   return null;
 }
 
-export function fixedClassifierModel(env = process.env) {
-  return env.SMARTCODEX_CLASSIFIER_MODEL || DEFAULT_CLASSIFIER_MODEL;
+export function fixedClassifierModel() {
+  return CLASSIFIER_MODEL;
 }

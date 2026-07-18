@@ -68,7 +68,7 @@ export async function runCli(argv, io, deps = {}) {
     return 2;
   }
 
-  const classifierModel = classifier === "ollama" ? localClassifierModel(io.env) : fixedClassifierModel(io.env);
+  const classifierModel = classifier === "ollama" ? localClassifierModel(io.env) : fixedClassifierModel();
   const requestedModel = options.model;
   const routeModels = routeModelsFromEnv(io.env);
   const routeCandidates = routeCandidatesFromEnv(io.env);
@@ -84,7 +84,7 @@ export async function runCli(argv, io, deps = {}) {
       const run = await runner({
         prompt,
         repoProfile,
-        classifierModel,
+        ...(classifier === "ollama" ? { classifierModel } : {}),
         routeModels,
         routeCandidates,
         codexBin,
@@ -307,7 +307,7 @@ function helpText() {
     "--setup-ollama downloads the local model after Ollama is installed.",
     "SMARTCODEX_CLASSIFIER=ollama makes local classification the default.",
     "Local Ollama reasoning is on by default; set SMARTCODEX_OLLAMA_THINK=false to disable it.",
-    "The Codex classifier uses SMARTCODEX_CLASSIFIER_MODEL, or its built-in cheap default.",
+    "The Codex classifier is always gpt-5.4-mini with low reasoning in a fresh ephemeral task.",
     "--model is accepted as a downstream model preference and does not change the classifier model."
   ].join("\n") + "\n";
 }

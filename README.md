@@ -22,7 +22,9 @@ Regular messages pass through to codex verbatim.
   `SMARTCODEX_CODEX_BIN`).
 - The classifier (`smartcodex-classify`, in this repo under `bin/`) is found
   automatically; `SMARTCODEX_CLASSIFY_BIN` can point at a different copy. It classifies
-  via a cheap codex model by default, or locally via ollama (`SMARTCODEX_CLASSIFIER=ollama`).
+  in a fresh ephemeral Codex task using `gpt-5.4-mini`, low reasoning, and low response
+  verbosity, or locally via ollama (`SMARTCODEX_CLASSIFIER=ollama`). The Codex classifier
+  model and reasoning level are fixed and cannot be overridden by environment variables.
   If classification fails, auto mode warns and falls back to the balanced-route model.
 
 ### Usage
